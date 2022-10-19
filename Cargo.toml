@@ -13,4 +13,5 @@ path = "src/lib.rs"
 name = "selfstorer"
 path = "src/main.rs"
 
-[dependencies]
+[dev-dependencies]
+rand = "*"
