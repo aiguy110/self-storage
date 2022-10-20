@@ -41,6 +41,7 @@ fn get_magic_bytes() -> Vec<u8> {
 }
 
 fn update_orig() {
+    println!("Doing update_orig()");
     let orig_path = PathBuf::from( env::var("SELF_STORAGE_TWIN_PATH").unwrap() );
     let orig_pid: u32 = env::var("SELF_STORAGE_TWIN_PID").unwrap().parse().unwrap();
     
@@ -56,6 +57,7 @@ fn update_orig() {
 }
 
 fn kill_evil_twin() {
+    println!("Doing kill_evil_twin()");
     let evil_twin_path = PathBuf::from( env::var("SELF_STORAGE_TWIN_PATH").unwrap() );
     let evil_twin_pid: u32 = env::var("SELF_STORAGE_TWIN_PID").unwrap().parse().unwrap();
 
@@ -84,6 +86,8 @@ where R: Read, W: Write
         return Ok(0);
     }
 
+    let mut pending_bytes = Vec::new();
+
     let mut write_count = 0;
     let mut seq_pos=0;
     let mut buf = [0u8; 1024];
@@ -109,9 +113,17 @@ where R: Read, W: Write
             }
         }
 
+        if pending_bytes.len() > 0 {
+            output.write_all(&pending_bytes[..])?;
+            pending_bytes.clear();
+        }
+
         if send_to != 0 { 
             write_count += send_to+1;
             output.write_all(&buf[0..send_to+1])?;
+        }
+        if send_to+1 != n {
+            pending_bytes.extend_from_slice(&buf[send_to+1..n]);
         }
     }
 
@@ -119,6 +131,7 @@ where R: Read, W: Write
 }
 
 pub fn self_storage_init() {
+    println!("Doing self_storage_init()");
     match env::var("SELF_STORAGE_STARTUP_MODE") {
         Ok(v) => {
             match v.as_str() {
@@ -132,6 +145,7 @@ pub fn self_storage_init() {
 }
 
 pub fn set_stored_data_and_exit(data: &[u8]) {
+    println!("Doing set_stored_data_and_exit with {} bytes of data.", data.len());
     // Open self and twin files
     let mut self_file = fs::OpenOptions::new().read(true).open( env::current_exe().unwrap() ).unwrap();
     let mut twin_path = env::current_exe().unwrap();
@@ -150,13 +164,16 @@ pub fn set_stored_data_and_exit(data: &[u8]) {
     twin_file.write_all(data).unwrap();
     drop(twin_file);
 
+    println!("Leaving evil_twin.exe behind...");
+    
     // Set env vars
     env::set_var("SELF_STORAGE_TWIN_PID", format!("{}", process::id()));
     env::set_var("SELF_STORAGE_TWIN_PATH", env::current_exe().unwrap());
     env::set_var("SELF_STORAGE_STARTUP_MODE", "UPDATE_ORIG");
 
     // Launch `evil_twin.exe` (program will not return from this call as twin should kill it)
-    process::Command::new(&twin_path).output().unwrap();
+    println!("Launching evil_twin.exe");
+    process::Command::new(&twin_path).status().unwrap();
 }
 
 pub struct StoredDataReader {
@@ -222,9 +239,19 @@ pub fn get_stored_data() -> io::Result<StoredDataReader> {
 mod test {
     use super::*;
     use std::io::Cursor;
+    use rand::Rng;
+
+    fn get_random_bytes(n: usize) -> Vec<u8> {
+        let mut rng = rand::thread_rng();
+        let mut v = Vec::with_capacity(n);
+        for _ in 0..n {
+            v.push(rng.gen())
+        }
+        v
+    }
 
     #[test]
-    fn test_copy_until_seq() {
+    fn test_copy_until_seq_short() {
         let mut input = Cursor::new(b"HelloWorld");
         let mut output = Cursor::new(vec![0u8; 32]);
         let bytes_copied = copy_until_seq(&mut input, &mut output, b"World").unwrap();
@@ -232,5 +259,26 @@ mod test {
         let output = output.into_inner();
         assert_eq!(&output[..5], b"Hello");
         assert!(&output[5..].into_iter().all(|b| *b == b"\x00"[0]));
+    }
+
+    #[test]
+    fn test_copy_until_seq_long() {
+        let (s, m, e) = (1_000_000, 100, 1_000);
+        let start = get_random_bytes(s);
+        let mid   = get_random_bytes(m);
+        let end   = get_random_bytes(e);
+
+        let mut full = Vec::with_capacity(s+m+e);
+        for b in start.iter() { full.push(*b) }
+        for b in mid.iter()   { full.push(*b) }
+        for b in end.iter()   { full.push(*b) }
+
+        let mut hopefully_start = Cursor::new(Vec::new());
+        let mut full = Cursor::new(full);
+        copy_until_seq(&mut full, &mut hopefully_start, &mid).unwrap();
+        let hopefully_start = hopefully_start.into_inner();
+        
+        assert_eq!(start.len(), hopefully_start.len());
+        assert_eq!(start, hopefully_start);
     }
 }
