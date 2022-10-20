@@ -41,7 +41,6 @@ fn get_magic_bytes() -> Vec<u8> {
 }
 
 fn update_orig() {
-    println!("Doing update_orig()");
     let orig_path = PathBuf::from( env::var("SELF_STORAGE_TWIN_PATH").unwrap() );
     let orig_pid: u32 = env::var("SELF_STORAGE_TWIN_PID").unwrap().parse().unwrap();
     
@@ -57,7 +56,6 @@ fn update_orig() {
 }
 
 fn kill_evil_twin() {
-    println!("Doing kill_evil_twin()");
     let evil_twin_path = PathBuf::from( env::var("SELF_STORAGE_TWIN_PATH").unwrap() );
     let evil_twin_pid: u32 = env::var("SELF_STORAGE_TWIN_PID").unwrap().parse().unwrap();
 
@@ -131,7 +129,6 @@ where R: Read, W: Write
 }
 
 pub fn self_storage_init() {
-    println!("Doing self_storage_init()");
     match env::var("SELF_STORAGE_STARTUP_MODE") {
         Ok(v) => {
             match v.as_str() {
@@ -145,7 +142,6 @@ pub fn self_storage_init() {
 }
 
 pub fn set_stored_data_and_exit(data: &[u8]) {
-    println!("Doing set_stored_data_and_exit with {} bytes of data.", data.len());
     // Open self and twin files
     let mut self_file = fs::OpenOptions::new().read(true).open( env::current_exe().unwrap() ).unwrap();
     let mut twin_path = env::current_exe().unwrap();
@@ -164,15 +160,12 @@ pub fn set_stored_data_and_exit(data: &[u8]) {
     twin_file.write_all(data).unwrap();
     drop(twin_file);
 
-    println!("Leaving evil_twin.exe behind...");
-    
     // Set env vars
     env::set_var("SELF_STORAGE_TWIN_PID", format!("{}", process::id()));
     env::set_var("SELF_STORAGE_TWIN_PATH", env::current_exe().unwrap());
     env::set_var("SELF_STORAGE_STARTUP_MODE", "UPDATE_ORIG");
 
     // Launch `evil_twin.exe` (program will not return from this call as twin should kill it)
-    println!("Launching evil_twin.exe");
     process::Command::new(&twin_path).status().unwrap();
 }
 
