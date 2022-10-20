@@ -86,6 +86,8 @@ where R: Read, W: Write
         return Ok(0);
     }
 
+    let mut pending_bytes = Vec::new();
+
     let mut write_count = 0;
     let mut seq_pos=0;
     let mut buf = [0u8; 1024];
@@ -111,9 +113,17 @@ where R: Read, W: Write
             }
         }
 
+        if pending_bytes.len() > 0 {
+            output.write_all(&pending_bytes[..])?;
+            pending_bytes.clear();
+        }
+
         if send_to != 0 { 
             write_count += send_to+1;
             output.write_all(&buf[0..send_to+1])?;
+        }
+        if send_to+1 != n {
+            pending_bytes.extend_from_slice(&buf[send_to+1..n]);
         }
     }
 
