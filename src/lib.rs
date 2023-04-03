@@ -31,6 +31,9 @@ use std::env;
 use std::process;
 use std::path::PathBuf;
 
+#[cfg(unix)]
+use std::os::unix::fs::OpenOptionsExt;
+
 // Can't store these bytes in the order they will be used or the first place they
 // appear inside the binary will be not at the end, where we are trying to signal 
 // the beginning of the stored data.
@@ -70,6 +73,13 @@ fn kill_pid(pid: u32) {
     kill_cmd.arg("/F")
         .arg("/PID")
         .arg(format!("{}", pid));
+    kill_cmd.output().unwrap();
+}
+
+#[cfg(unix)]
+fn kill_pid(pid: u32) {
+    let mut kill_cmd = process::Command::new("kill");
+    kill_cmd.arg(format!("{}", pid));
     kill_cmd.output().unwrap();
 }
 
@@ -147,8 +157,12 @@ pub fn set_stored_data_and_exit(data: &[u8]) {
     let mut twin_path = env::current_exe().unwrap();
     twin_path.pop();
     twin_path.push("evil_twin.exe");
+
     let mut twin_file_builder = fs::OpenOptions::new();
     twin_file_builder.write(true).truncate(true);
+    #[cfg(unix)]
+    twin_file_builder.mode(0o700);
+
     let mut twin_file = match twin_file_builder.open(&twin_path) {
         Ok(f) => f,
         Err(_) => twin_file_builder.create_new(true).open(&twin_path).unwrap()
